@@ -38,13 +38,19 @@ def clean_text(text):
     return text
 
 
-def create_chunks(text, target_chars=TARGET_CHARS):
+def create_chunks(
+    text,
+    target_chars=TARGET_CHARS,
+    min_chars=100,
+):
     """
-    Split legal text into approximately target-sized chunks.
+    Split legal text into retrieval-friendly chunks.
 
-    We prefer paragraph/sentence boundaries, but enforce a hard
-    maximum so that extremely long legal passages are never
-    stored as one embedding.
+    Rules:
+    - Prefer paragraph/sentence boundaries.
+    - Target approximately 1,500 characters.
+    - Never exceed 1,500 characters.
+    - Merge very short fragments into the previous chunk.
     """
 
     text = clean_text(text)
@@ -52,15 +58,21 @@ def create_chunks(text, target_chars=TARGET_CHARS):
     if not text:
         return []
 
-    # First try legal paragraph boundaries.
-    paragraphs = re.split(r"(?<=\.)\s+(?=\d+\s)", text)
+    # Try to identify numbered legal paragraphs.
+    paragraphs = re.split(
+        r"(?<=\.)\s+(?=\d+\s)",
+        text
+    )
 
-    # If paragraph detection is ineffective, use sentence boundaries.
+    # If that doesn't provide useful boundaries,
+    # fall back to sentence boundaries.
     if len(paragraphs) == 1:
-        paragraphs = re.split(r"(?<=[.!?])\s+", text)
+        paragraphs = re.split(
+            r"(?<=[.!?])\s+",
+            text
+        )
 
-    chunks = []
-    current = ""
+    pieces = []
 
     for paragraph in paragraphs:
         paragraph = paragraph.strip()
@@ -68,37 +80,63 @@ def create_chunks(text, target_chars=TARGET_CHARS):
         if not paragraph:
             continue
 
-        # If one paragraph itself is too large, split it.
+        # Break very long paragraphs into safe pieces.
         if len(paragraph) > target_chars:
-
-            if current:
-                chunks.append(current)
-                current = ""
 
             for start in range(
                 0,
                 len(paragraph),
                 target_chars
             ):
-                piece = paragraph[start:start + target_chars]
-                chunks.append(piece.strip())
+                piece = paragraph[
+                    start:start + target_chars
+                ].strip()
 
-            continue
-
-        if len(current) + len(paragraph) + 1 <= target_chars:
-            current = f"{current} {paragraph}".strip()
+                if piece:
+                    pieces.append(piece)
 
         else:
-            if current:
-                chunks.append(current)
+            pieces.append(paragraph)
 
-            current = paragraph
+    # Build final chunks.
+    chunks = []
+    current = ""
+
+    for piece in pieces:
+
+        if not current:
+            current = piece
+            continue
+
+        candidate = f"{current} {piece}"
+
+        if len(candidate) <= target_chars:
+            current = candidate
+
+        else:
+            chunks.append(current)
+            current = piece
 
     if current:
         chunks.append(current)
 
-    return chunks
+       # Merge very short fragments into the previous chunk.
+    # We allow the chunk to go slightly above the target size
+    # because preserving meaningful legal context is more
+    # important than enforcing an exact character limit.
 
+    merged_chunks = []
+
+    for chunk in chunks:
+
+        if len(chunk) < min_chars and merged_chunks:
+            merged_chunks[-1] = (
+                f"{merged_chunks[-1]} {chunk}"
+            )
+        else:
+            merged_chunks.append(chunk)
+
+    return merged_chunks
 def prepare_documents():
     print("Loading legal case data...")
 
