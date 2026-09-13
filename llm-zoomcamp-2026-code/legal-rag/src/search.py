@@ -7,7 +7,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 load_dotenv()
 
-EMBEDDINGS_FILE = "data/processed/legal_documents_embeddings.csv"
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+EMBEDDINGS_FILE = PROJECT_ROOT / "data" / "processed" / "legal_documents_embeddings.csv"
 EMBEDDING_MODEL = os.getenv(
     "OPENAI_EMBEDDING_MODEL",
     "text-embedding-3-small",
